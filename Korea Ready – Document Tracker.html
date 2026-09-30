@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Korea Ready – Document Tracker</title>
+<style>
+:root{--bg:#f6f7fb;--card:#fff;--text:#1c2030;--muted:#6a7085;--line:#e2e5ef;--accent:#2f5bea;--ok:#1f9d55;--warn:#d98a00;--bad:#d64545;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#12141c;--card:#1b1e2a;--text:#e8eaf3;--muted:#98a0b8;--line:#2b3042;--accent:#6c8cff}}
+:root[data-theme="dark"]{--bg:#12141c;--card:#1b1e2a;--text:#e8eaf3;--muted:#98a0b8;--line:#2b3042;--accent:#6c8cff}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.45}
+main{max-width:760px;margin:0 auto;padding:16px}
+h1{font-size:1.4rem;margin:8px 0 2px}
+.sub{color:var(--muted);font-size:.9rem;margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
+.bar{height:10px;background:var(--line);border-radius:6px;overflow:hidden;margin:8px 0}
+.bar i{display:block;height:100%;background:var(--ok);transition:width .3s}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input,select,textarea,button{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:7px 9px}
+button{cursor:pointer}
+button.p{background:var(--accent);color:#fff;border-color:var(--accent)}
+textarea{width:100%;resize:vertical}
+.doc h3{margin:0;font-size:1rem}
+.badge{font-size:.72rem;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--muted)}
+.b-done{color:var(--ok);border-color:var(--ok)}.b-prog{color:var(--warn);border-color:var(--warn)}
+.due{font-size:.82rem;color:var(--muted)}.late{color:var(--bad);font-weight:600}.soon{color:var(--warn);font-weight:600}
+.steps label{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin:4px 0}
+.steps input{margin-top:3px}
+details summary{cursor:pointer;color:var(--accent);font-size:.88rem;margin-top:8px}
+.note{font-size:.8rem;color:var(--muted)}
+.up{margin:0;padding-left:18px;font-size:.9rem}
+.filters button.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+<h1>🇰🇷 Korea Ready – Document Tracker</h1>
+<p class="sub">Track scholarship documents, apostille steps and deadlines. Your data stays in this browser.</p>
+
+<div class="card">
+  <div class="row" style="justify-content:space-between"><strong id="pct">0% complete</strong><span id="cnt" class="note"></span></div>
+  <div class="bar"><i id="fill" style="width:0"></i></div>
+  <div id="upWrap"><strong style="font-size:.9rem">Upcoming deadlines</strong><ul class="up" id="up"></ul></div>
+</div>
+
+<div class="card">
+  <div class="row">
+    <input id="newName" placeholder="Add a document (e.g. TOPIK certificate)" style="flex:1;min-width:180px">
+    <input id="newDue" type="date">
+    <button class="p" id="addBtn">Add</button>
+  </div>
+</div>
+
+<div class="row filters" style="margin-bottom:10px">
+  <button data-f="all" class="on">All</button><button data-f="todo">Not started</button><button data-f="prog">In progress</button><button data-f="done">Done</button>
+  <span style="flex:1"></span><button id="reset">Reset</button>
+</div>
+
+<div id="list"></div>
+
+<p class="note">⚠️ The starter list is a general guide, not official. Requirements and deadlines change every year, so always check the current GKS-U guidelines on the NIIED / Study in Korea site and the Korean Embassy in India, and follow the documents your chosen route requires.</p>
+</main>
+
+<script>
+const KEY="korea-ready-v1";
+const APO=["Get original / attested copy from the issuing office","Attestation by state education or home department (if required)","Apostille from MEA (India)","Scan clearly and keep 2 photocopies"];
+const mk=(name,apo)=>({id:Math.random().toString(36).slice(2,9),name,status:"todo",due:"",notes:"",steps:apo?APO.map(t=>({t,d:false})):[]});
+function defaults(){return[
+ mk("Application form (GKS-U)"),
+ mk("Personal statement"),
+ mk("Study plan"),
+ mk("Recommendation letter from school principal / head"),
+ mk("Passport copy (proof of nationality)"),
+ mk("Academic transcript",true),
+ mk("Graduation (or expected graduation) certificate",true),
+ mk("Family relations certificate",true),
+ mk("Language proof (TOPIK / English test, if applicable)"),
+ mk("Passport-size photos"),
+ mk("Medical check (if selected)")
+]}
+let docs,filter="all";
+try{const s=localStorage.getItem(KEY);docs=s?JSON.parse(s):null}catch(e){docs=null}
+if(!Array.isArray(docs))docs=defaults();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(docs))}catch(e){}}
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+function days(d){if(!d)return null;const t=new Date();t.setHours(0,0,0,0);return Math.round((new Date(d+"T00:00:00")-t)/864e5)}
+function dueTxt(d){const n=days(d);if(n===null)return"";
+ if(n<0)return`<span class="late">Overdue by ${-n} day${n==-1?"":"s"}</span>`;
+ if(n===0)return`<span class="soon">Due today</span>`;
+ return`<span class="${n<=7?"soon":""}">${n} day${n==1?"":"s"} left (${d})</span>`}
+function render(){
+ const done=docs.filter(d=>d.status==="done").length,total=docs.length||1;
+ const p=Math.round(done/total*100);
+ pct.textContent=p+"% complete";cnt.textContent=done+" of "+docs.length+" done";fill.style.width=p+"%";
+ const up=docs.filter(d=>d.due&&d.status!=="done").sort((a,b)=>a.due.localeCompare(b.due)).slice(0,4);
+ document.getElementById("up").innerHTML=up.length?up.map(d=>`<li>${esc(d.name)} – ${dueTxt(d.due)}</li>`).join(""):`<li class="note">No deadlines set yet.</li>`;
+ const shown=docs.filter(d=>filter==="all"||d.status===filter);
+ list.innerHTML=shown.map(d=>{
+  const sd=d.steps.filter(s=>s.d).length;
+  return`<div class="card doc" data-id="${d.id}">
+  <div class="row" style="justify-content:space-between">
+   <h3>${esc(d.name)}</h3>
+   <span class="badge ${d.status==="done"?"b-done":d.status==="prog"?"b-prog":""}">${{todo:"Not started",prog:"In progress",done:"Done"}[d.status]}</span>
+  </div>
+  <div class="due">${dueTxt(d.due)}</div>
+  <div class="row" style="margin-top:8px">
+   <select data-a="status"><option value="todo">Not started</option><option value="prog">In progress</option><option value="done">Done</option></select>
+   <input type="date" data-a="due" value="${d.due}">
+   <button data-a="del">Delete</button>
+  </div>
+  ${d.steps.length?`<details ${d.status==="done"?"":"open"}><summary>Apostille steps (${sd}/${d.steps.length})</summary><div class="steps">${d.steps.map((s,i)=>`<label><input type="checkbox" data-a="step" data-i="${i}" ${s.d?"checked":""}>${esc(s.t)}</label>`).join("")}</div></details>`:""}
+  <details><summary>Notes</summary><textarea rows="2" data-a="notes" placeholder="Who to contact, fees, where to collect…">${esc(d.notes)}</textarea></details>
+  </div>`}).join("")||`<p class="note">Nothing here.</p>`;
+ list.querySelectorAll(".doc").forEach(el=>{const d=docs.find(x=>x.id===el.dataset.id);el.querySelector('[data-a="status"]').value=d.status});
+}
+const list=document.getElementById("list"),pct=document.getElementById("pct"),cnt=document.getElementById("cnt"),fill=document.getElementById("fill");
+list.addEventListener("change",e=>{
+ const el=e.target.closest(".doc");if(!el)return;const d=docs.find(x=>x.id===el.dataset.id),a=e.target.dataset.a;
+ if(a==="status")d.status=e.target.value;
+ else if(a==="due")d.due=e.target.value;
+ else if(a==="step"){d.steps[+e.target.dataset.i].d=e.target.checked;if(d.steps.every(s=>s.d))d.status="done";else if(d.steps.some(s=>s.d)&&d.status==="todo")d.status="prog"}
+ else if(a==="notes"){d.notes=e.target.value;save();return}
+ save();render()});
+list.addEventListener("click",e=>{
+ if(e.target.dataset.a==="del"){const id=e.target.closest(".doc").dataset.id;if(confirm("Delete this item?")){docs=docs.filter(x=>x.id!==id);save();render()}}});
+document.getElementById("addBtn").onclick=()=>{const n=newName.value.trim();if(!n)return;const d=mk(n);d.due=newDue.value;docs.push(d);newName.value="";newDue.value="";save();render()};
+document.querySelectorAll(".filters [data-f]").forEach(b=>b.onclick=()=>{filter=b.dataset.f;document.querySelectorAll(".filters [data-f]").forEach(x=>x.classList.toggle("on",x===b));render()});
+document.getElementById("reset").onclick=()=>{if(confirm("Reset everything to the starter list?")){docs=defaults();save();render()}};
+render();
+</script>
+</body>
+</html>
